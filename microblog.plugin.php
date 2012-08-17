@@ -3,6 +3,8 @@
 class Microblog extends Plugin
 {
 	
+	static $default_characterlimit = 140;
+	
 	public function action_update_check()
 	{
 		Update::add( $this->info->name, 'fd3dbaf7-c91a-440b-92ad-c73b04e329b6', $this->info->version );
@@ -41,6 +43,40 @@ class Microblog extends Plugin
 	}
 	
 	/**
+	 * Build the configuration settings
+	 */
+	public function configure()
+	{
+		$ui = new FormUI( 'microblog_config' );
+
+		// Add a text control for the address you want the email sent to
+		$limit = $ui->append( 'text', 'characterlimit', 'option:microblog__characterlimit', _t( 'Character limit for microposts:' ) );
+		$limit->helptext = _t( 'For none, enter 0.' );
+		if( $limit->value == '' )
+		{
+			$limit->value = self::$default_characterlimit;
+		}
+		
+		$ui->append( 'submit', 'save', 'Save' );
+		return $ui;
+	}
+	
+	/**
+	 * Validate that the given text is under a specific character limit
+	 */
+	function validate_length( $text, $control, $form, $max_length ) {
+		
+		$length = strlen( $text );
+		
+		if( $length > $max_length )
+		{			
+			return array( sprintf( _t( 'Text is too long by <strong>%d</strong> characters.' ), ( $length - $max_length ) ) );
+		}
+		
+	    return array();
+	  }
+	
+	/**
 	 * Modify publish form. We're going to add the custom 'address' field, as we like
 	 * to hold our events at addresses.
 	 */
@@ -50,6 +86,11 @@ class Microblog extends Plugin
 		if ($form->content_type->value == Post::type('micropost')) {
 			
 			$form->title->caption = _t( 'Title (optional)' );
+			
+			if( Options::get('microblog__characterlimit', self::$default_characterlimit ) > 0 )
+			{
+				$form->content->add_validator( array( $this, 'validate_length' ), Options::get('microblog__characterlimit', self::$default_characterlimit ) );
+			}
 			
 			// // just want to add a text field
 			// 			$form->insert('tags', 'text', 'address', 'null:null', _t('Event Address'), 'admincontrol_textArea');
