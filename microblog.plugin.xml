@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8" ?> 
+<pluggable type="plugin"> 
+	<name>Microblog</name> 
+	<license url="http://www.apache.org/licenses/LICENSE-2.0.html">Apache Software License 2.0</license> 
+	<author url="http://morgante.net/">Morgante Pell</author> 
+	<version>0.1</version> 
+	<url>http://lab.morgante.net/microblog</url> 
+	<description><![CDATA[This plugin allows Habari to be used for Microblogging, à la Twitter.]]></description> 
+	<copyright>2012</copyright> 
+</pluggable>
