@@ -43,6 +43,32 @@ class Microblog extends Plugin
 	}
 	
 	/**
+	 * Add links to users and hashtags
+	 **/
+	public function filter_post_content_out( $content, $post )
+	{
+		if( $post->content_type == Post::type('micropost') )
+		{
+			$user_regex = '/(^|\s)(@([a-z0-9_\.]+))/i';
+	
+			if( preg_match_all( $user_regex, $content, $matches ) )
+			{
+				foreach( $matches[3] as $username )
+				{
+					$link = Plugins::filter( 'microblog_userlink', array( false, $username ), $post );
+					if( $link[0] )
+					{
+						$content = str_replace( '@' . $username, '<a href="' . $link[1] . '" class="username">@' . $username . '</a>', $content );
+					}
+				}
+			}
+		}
+		
+		return $content;
+		
+	}
+	
+	/**
 	 * Build the configuration settings
 	 */
 	public function configure()
