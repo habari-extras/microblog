@@ -4,6 +4,62 @@ class Microblog extends Plugin
 {
 	
 	static $default_characterlimit = 140;
+	static $send_services = array();
+	static $link_services = array();
+	static $copy_services = array();
+	
+	public function action_init()
+	{
+		// build the list of available services
+		foreach( Plugins::get_active() as $plugin )
+		{
+			switch( get_class( $plugin ) )
+			{
+				case 'Twitter':
+					self::$send_services['twitter'] = false;
+					self::$link_services['twitter'] = false;
+					self::$copy_services['twitter'] = false;
+					break;
+			}
+		}
+		
+		self::$send_services = Plugins::filter( 'microblog__available_send_services', self::$send_services );
+		self::$link_services = Plugins::filter( 'microblog__available_link_services', self::$link_services );
+		self::$copy_services = Plugins::filter( 'microblog__available_copy_services', self::$copy_services );
+		
+		// enable send services
+		$enabled_send_services = Options::get( 'microblog__send_services', array() );
+		foreach( self::$send_services as $service => $status )
+		{
+			if( in_array( $service, $enabled_send_services ) )
+			{
+				self::$send_services[ $service ] = true;
+			}
+		}
+		
+		// enable link services
+		$enabled_link_services = Options::get( 'microblog__link_services', array() );
+		foreach( self::$link_services as $service => $status )
+		{
+			if( in_array( $service, $enabled_link_services ) )
+			{
+				self::$link_services[ $service ] = true;
+			}
+		}
+		
+		// enable copy services
+		$enabled_copy_services = Options::get( 'microblog__copy_services', array() );
+		foreach( self::$copy_services as $service => $status )
+		{
+			if( in_array( $service, $enabled_copy_services ) )
+			{
+				self::$copy_services[ $service ] = true;
+			}
+		}
+				
+		$this->try_copy();
+		
+	}
 	
 	public function action_update_check()
 	{
@@ -83,6 +139,55 @@ class Microblog extends Plugin
 			$limit->value = self::$default_characterlimit;
 		}
 		
+		$users = Users::get_all();
+		
+		// Add options of services to send microblogs to
+		if( count( self::$send_services ) > 0 )
+		{
+			$send = $ui->append( 'fieldset', 'send_services_container', _t( 'Post microposts' ) );
+			$send->append( 'select', 'send_user', 'option:microblog__senduser' , _t('Post as:') );
+			foreach( $users as $user )
+			{
+				$send->send_user->options[ $user->id ] = $user->displayname;
+			}
+			
+			$send_services = $send->append( 'checkboxes', 'send_services', 'option:microblog__send_services' );
+			foreach( self::$send_services as $service => $state )
+			{
+				$send_services->options[ $service ] = $this->service( $service, 'name' );
+				// Utils::debug( )
+			}
+		}
+		
+		// Add options of services to use for linking
+		if( count( self::$link_services ) > 0 )
+		{
+			$link_services = $ui->append( 'fieldset', 'link_services_container', _t( 'Link microposts to' ) )->append( 'checkboxes', 'link_services', 'option:microblog__link_services' );
+			foreach( self::$link_services as $service => $state )
+			{
+				$link_services->options[ $service ] = $this->service( $service, 'name' );
+				// Utils::debug( )
+			}
+		}
+		
+		// Add options of services to use for copying
+		if( count( self::$copy_services ) > 0 )
+		{
+			$copy = $ui->append( 'fieldset', 'copy_services_container', _t( 'Copy microposts' ) );
+			$copy->append( 'select', 'copy_user', 'option:microblog__copyuser' , _t('Copy as:') );
+			foreach( $users as $user )
+			{
+				$copy->copy_user->options[ $user->id ] = $user->displayname;
+			}
+			
+			$copy_services = $copy->append( 'checkboxes', 'copy_services', 'option:microblog__copy_services' );
+			foreach( self::$copy_services as $service => $state )
+			{
+				$copy_services->options[ $service ] = $this->service( $service, 'name' );
+				// Utils::debug( )
+			}
+		}
+		
 		$ui->append( 'submit', 'save', 'Save' );
 		return $ui;
 	}
@@ -137,7 +242,146 @@ class Microblog extends Plugin
 				$post->title = Format::summarize( strip_tags( $post->content ), 5 );
 			}
 			
+			// 
+			foreach( self::$send_services as $service => $active )
+			{
+				if( $active )
+				{
+					$this->service( $service, 'send', array( 'post' => $post ) );
+				}
+			}
+			
 		}
+	}
+	
+	/**
+	 * Copy posts from copy services 
+	 **/
+	public function try_copy ()
+	{
+		$user = User::get_by_id( Options::get( 'microblog__copyuser' ) );
+				
+		$posts = array();
+		foreach( self::$copy_services as $service => $active )
+		{
+			if( $active )
+			{
+				$posts = $this->service( $service, 'copy', array( 'user' => $user ) );
+			}
+		}
+		
+		$posts = Plugins::filter( 'microblog__copyposts', $posts );
+		
+		foreach( $posts as $post )
+		{			
+			Utils::debug( Posts::get( array( 'content' => $post->text, 'pubdate' => HabariDateTime::date_create( $post->time ) ) ) );
+			if( Posts::get( array( 'content' => $post->text, 'pubdate' => HabariDateTime::date_create( $post->time ) ) )->count() == 0 )
+			{
+				$micropost = new Post( array( 'content_type' => Post::type( 'micropost' ) ) );
+
+				$micropost->content = $post->text;
+				$micropost->title = Format::summarize( strip_tags( $micropost->content ), 5 );
+				$micropost->pubdate = HabariDateTime::date_create( $post->time );
+
+				$micropost->info->source_id = $post->id;
+				$micropost->info->source_link = $post->permalink;
+				
+				$micropost->user_id = $user->id;
+				
+				$micropost->insert();
+
+				Session::notice( _t( 'Micropost successfully copied' ) );
+				
+			}
+			
+		}
+	}
+	
+	/**
+	 * Handle a service action
+	 **/
+	public function service( $service, $action, $params = array() )
+	{
+		$service_handlers = array(
+			'twitter' => array(
+				'send' => array( $this, 'send_twitter'),
+				'name' => array( $this, 'name_twitter'),
+				'copy' => array( $this, 'copy_twitter')
+			)
+		);
+		$service_handlers = Plugins::filter( 'microblog_servicehandlers', $service_handlers );
+		
+		$params = Plugins::filter( 'microblog_servicehandler_params', $params, $service, $action );
+		
+		Plugins::act( 'microblog_pre_servicehandle', $service, $action, $params );
+		$return = call_user_func_array( $service_handlers[ $service ][ $action ], $params );
+		Plugins::act( 'microblog_post_servicehandle', $service, $action, $params, $return );
+		
+		return $return;
+		
+	}
+	
+	/**
+	 *
+	 */
+	public function action_form_user($form, $edit_user)
+	{
+		if( isset( self::$copy_services['twitter'] ) ) {
+			$userid = $form->user_info->append( 'text', 'twittername', 'null:null', _t( 'Twitter Username'), 'optionscontrol_text' );
+			$userid->class[] = 'item clear';
+			$userid->value = $edit_user->info->twitter__name;
+		}
+		
+	}
+
+	public function filter_form_user_update($update, $form, $edit_user)
+	{
+		if( isset( self::$copy_services['twitter'] ) )
+		{
+			if($form->twittername->value != $edit_user->info->twitter__name)
+			{
+				$edit_user->info->twitter__name = $form->twittername->value;
+				return true;
+			}
+			return $update;
+		}
+	}
+	
+	/**
+	 * Send a micropost to Twitter
+	 */
+	public function send_twitter( $post )
+	{
+				
+		require_once dirname(__FILE__) . '/../twitter/lib/twitteroauth/twitteroauth.php';
+		$user = User::get_by_id($post->user_id);
+		
+		$oauth = new TwitterOAuth(Twitter::CONSUMER_KEY_WRITE, Twitter::CONSUMER_SECRET_WRITE, $user->info->twitter__access_token, $user->info->twitter__access_token_secret);
+		
+		$oauth->post('statuses/update', array('status' => $post->content));
+		
+		Session::notice(_t('Post Tweeted', 'twitter'));
+		
+		// exit;
+
+	}
+	
+	/**
+	 * Provide the name for Twitter service
+	 */
+	public function name_twitter()
+	{
+		return 'Twitter';
+	}
+	
+	public function copy_twitter( $user )
+	{
+		$class = new Twitter;
+		
+		$username = $user->info->twitter__name;
+		
+		$tweets = $class->tweets( $username, false, 5, 0, false );
+		return $tweets;
 	}
 	
 }
