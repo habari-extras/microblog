@@ -216,25 +216,31 @@ class Microblog extends Plugin
 			// 			$form->address->template = 'admincontrol_text';
 		}
 	}
+	
+	/**
+	 * Create a summarized title, if necessary
+	 **/
+	public function action_post_update_title( $post )
+	{
+		if ($post->content_type == Post::type('micropost') && $post->title == '' ) {
+
+			$post->title = Format::summarize( strip_tags( $post->content ), 5 );
+			
+		}
+	}
 
 	/**
 	 * Save our data to the database
 	 */
-	public function action_publish_post( $post, $form )
+	public function action_post_insert_after( $post )
 	{
 		if ($post->content_type == Post::type('micropost')) {
 			
-			if( $post->title == '' )
-			{
-				$post->title = Format::summarize( strip_tags( $post->content ), 5 );
-			}
-			
-			// 
 			foreach( self::$send_services as $service => $active )
 			{
 				if( $active )
 				{
-					$this->service( $service, 'send', array( 'post' => $post ) );
+					$this->service( $service, 'send', array( 'post' => $post, 'user' => User::get_by_id( Options::get( 'microblog__senduser' ) ) ) );
 				}
 			}
 			
@@ -266,9 +272,8 @@ class Microblog extends Plugin
 				$micropost = new Post( array( 'content_type' => Post::type( 'micropost' ) ) );
 
 				$micropost->content = $post->text;
-				$micropost->title = Format::summarize( strip_tags( $micropost->content ), 5 );
 				$micropost->pubdate = HabariDateTime::date_create( $post->time );
-
+				
 				$micropost->info->source_id = $post->id;
 				$micropost->info->source_link = $post->permalink;
 				
