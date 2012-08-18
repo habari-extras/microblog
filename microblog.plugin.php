@@ -9,7 +9,11 @@ class Microblog extends Plugin
 	static $copy_services = array();
 	
 	public function action_init()
-	{		
+	{
+		
+		// provide builtin link services
+		self::$link_services = array( 'all_urls' => true, 'hashtags.org' => true );
+		
 		self::$send_services = Plugins::filter( 'microblog__send_services', self::$send_services );
 		self::$link_services = Plugins::filter( 'microblog__link_services', self::$link_services );
 		self::$copy_services = Plugins::filter( 'microblog__copy_services', self::$copy_services );
@@ -22,6 +26,10 @@ class Microblog extends Plugin
 			{
 				self::$send_services[ $service ] = true;
 			}
+			else
+			{
+				self::$send_services[ $service ] = false;
+			}
 		}
 		
 		// enable link services
@@ -32,6 +40,10 @@ class Microblog extends Plugin
 			{
 				self::$link_services[ $service ] = true;
 			}
+			else
+			{
+				self::$link_services[ $service ] = false;
+			}
 		}
 		
 		// enable copy services
@@ -41,6 +53,10 @@ class Microblog extends Plugin
 			if( in_array( $service, $enabled_copy_services ) )
 			{
 				self::$copy_services[ $service ] = true;
+			}
+			else
+			{
+				self::$copy_services[ $service ] = false;
 			}
 		}
 				
@@ -92,16 +108,72 @@ class Microblog extends Plugin
 	{
 		if( $post->content_type == Post::type('micropost') )
 		{
-			$user_regex = '/(^|\s)(@([a-z0-9_\.]+))/i';
-	
-			if( preg_match_all( $user_regex, $content, $matches ) )
-			{
-				foreach( $matches[3] as $username )
+			// regex searches
+			$url_regex = '%https?://\S+?(?=(?:[.:?"!$&\'()*+,=]|)(?:\s|$))%i';
+			$user_regex = '/(?<!\w)@([\w-_.]{1,64})/';
+			$hash_regex = '/(?<!\w)#((?>\d{1,64}|)[\w-.]{1,64})/';
+			
+			
+			// linkify URLs
+			if( preg_match_all( $url_regex, $content, $matches ) )
+			{				
+
+				foreach( $matches[0] as $url )
 				{
-					$link = Plugins::filter( 'microblog_userlink', array( false, $username ), $post );
-					if( $link[0] )
+					$link = null;
+					foreach( self::$link_services as $service => $active )
 					{
-						$content = str_replace( '@' . $username, '<a href="' . $link[1] . '" class="username">@' . $username . '</a>', $content );
+						if( $active && $link == null )
+						{
+							$link = $this->service( $service, 'link', array( 'type' => 'url', 'given' => $url ) );
+						}
+					}
+										
+					if( $link != null )
+					{
+						$content = str_replace( $url, '<a href="' . $link . '" class="url">' . $url . '</a>', $content );
+					}
+				}
+			}
+			
+			// linkify users
+			if( preg_match_all( $user_regex, $content, $matches ) )
+			{				
+				foreach( $matches[1] as $username )
+				{
+					$link = null;
+					foreach( self::$link_services as $service => $active )
+					{
+						if( $active && $link == null )
+						{
+							$link = $this->service( $service, 'link', array( 'type' => 'user', 'given' => $username ) );
+						}
+					}
+					
+					if( $link != null )
+					{
+						$content = str_replace( '@' . $username, '<a href="' . $link . '" class="user">@' . $username . '</a>', $content );
+					}
+				}
+			}
+			
+			// linkify hashtags
+			if( preg_match_all( $hash_regex, $content, $matches ) )
+			{				
+				foreach( $matches[1] as $hashtag )
+				{					
+					$link = null;
+					foreach( self::$link_services as $service => $active )
+					{
+						if( $active && $link == null )
+						{
+							$link = $this->service( $service, 'link', array( 'type' => 'hashtag', 'given' => $hashtag ) );
+						}
+					}
+
+					if( $link != null )
+					{
+						$content = str_replace( '#' . $hashtag, '<a href="' . $link . '" class="hashtag">#' . $hashtag . '</a>', $content );
 					}
 				}
 			}
@@ -109,6 +181,28 @@ class Microblog extends Plugin
 		
 		return $content;
 		
+	}
+	
+	/**
+	 * undocumented function 
+	 **/
+	public function linkify_all_urls( $type, $given )
+	{
+		if( $type == 'url' )
+		{			
+			return $given;
+		}
+	}
+	
+	/**
+	 * undocumented function 
+	 **/
+	public function linkify_hashtags( $type, $given )
+	{
+		if( $type == 'hashtag' )
+		{
+			return 'http://hashtags.org/' . $given;
+		}
 	}
 	
 	/**
@@ -277,6 +371,8 @@ class Microblog extends Plugin
 				$micropost->info->source_id = $post->id;
 				$micropost->info->source_link = $post->permalink;
 				
+				$micropost->status = Post::status( 'published' );
+				
 				$micropost->user_id = $user->id;
 				
 				$micropost->insert();
@@ -293,11 +389,20 @@ class Microblog extends Plugin
 	 **/
 	public function service( $service, $action, $params = array() )
 	{
-		$service_handlers = array();
+		$service_handlers = array(
+			'all_urls' => array(
+				'name' => create_function( '', 'return "all URLs";'),
+				'link' => array( $this, 'linkify_all_urls' )
+			),
+			'hashtags.org' => array(
+				'name' => create_function( '', 'return "hashtags.org";'),
+				'link' => array( $this, 'linkify_hashtags' )
+			),
+		);
 		$service_handlers = Plugins::filter( 'microblog__servicehandlers', $service_handlers );
 		
 		$params = Plugins::filter( 'microblog__servicehandler_params', $params, $service, $action );
-		
+				
 		Plugins::act( 'microblog__pre_servicehandle', $service, $action, $params );
 		$return = call_user_func_array( $service_handlers[ $service ][ $action ], $params );
 		Plugins::act( 'microblog__post_servicehandle', $service, $action, $params, $return );
