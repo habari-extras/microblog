@@ -4,6 +4,7 @@ class Microblog extends Plugin
 {
 	
 	static $default_characterlimit = 140;
+	static $default_base = 'microblog';
 	static $send_services = array();
 	static $link_services = array();
 	static $copy_services = array();
@@ -217,12 +218,19 @@ class Microblog extends Plugin
 	{
 		$ui = new FormUI( 'microblog_config' );
 
-		// Add a text control for the address you want the email sent to
+		// Add a text control for the micropost character limit
 		$limit = $ui->append( 'text', 'characterlimit', 'option:microblog__characterlimit', _t( 'Character limit for microposts:' ) );
 		$limit->helptext = _t( 'For none, enter 0.' );
 		if( $limit->value == '' )
 		{
 			$limit->value = self::$default_characterlimit;
+		}
+		
+		// Add a text control for the microblog base
+		$base = $ui->append( 'text', 'base', 'option:microblog__base', _t( 'Base URL for microblog:' ) );
+		if( $base->value == '' )
+		{
+			$base->value = self::$default_base;
 		}
 		
 		$users = Users::get_all();
@@ -333,6 +341,48 @@ class Microblog extends Plugin
 		$block->posts = Posts::get( array( 'preset' => 'microposts', 'limit' => $block->limit ) );
 		$block->feed = URL::get( 'atom_feed', array( 'index' => 'microblog' ) );
 		// $this->tweets($block->username, $block->hide_replies, $block->limit, $block->cache, $block->linkify_urls, $block->hashtags_query);
+	}
+	
+	
+	/**
+	 * Add needed rewrite rules
+	 */
+	public function filter_default_rewrite_rules($rules)
+	{
+				
+		$rules[] = array(
+			'name' => 'display_microposts',
+			'parse_regex' => '#^' . Options::get( 'microblog__base', self::$default_base) . '(?:/page/(?P<page>[0-9]|[1-9][0-9]+))?/?$#',
+			'build_str' => Options::get( 'microblog__base', self::$default_base) . '/(page/{$page})',
+			'handler' => 'UserThemeHandler',
+			'action' => 'display_microposts',
+			'priority' => 999,
+			'description' => 'Display multiple microposts'
+		);
+		
+		return $rules;
+	}
+
+	/**
+	 * Helper function: Displays microposts
+	 * @param array $user_filters Additional arguments used to get the page content
+	 */
+	public function filter_theme_act_display_microposts( $handled, $theme )
+	{
+		$paramarray['fallback'] = array(
+			'micropost.multiple',
+			'multiple',
+			'home'
+		);
+
+		// Makes sure home displays only entries
+		$default_filters = array(
+			'preset' => 'microposts'
+		);
+
+		$paramarray['user_filters'] = $default_filters;
+		
+		return $theme->act_display( $paramarray );
 	}
 	
 	/**
