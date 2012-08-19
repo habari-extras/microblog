@@ -286,8 +286,7 @@ class Microblog extends Plugin
 	 */
 	public static function filter_posts_get_all_presets($presets)
 	{
-		$presets['microposts'] = array( 'content_type' => Post::type( 'micropost' ), 'status' => Post::status( 'published' ) );
-		// we should provide a default limit: , 'limit' => Options::get('pagination', 5) but not until this is fixed: https://github.com/habari/habari/issues/355
+		$presets['microposts'] = array( 'content_type' => Post::type( 'micropost' ), 'status' => Post::status( 'published' ), 'limit' => Options::get('pagination', 5) );
 
 		return $presets;
 	}
