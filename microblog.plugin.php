@@ -292,6 +292,17 @@ class Microblog extends Plugin
 		return $presets;
 	}
 	
+	public function filter_posts_get_paramarray( $params )
+	{
+		if( isset( $params['index'] ) && $params['index'] == 'microblog' )
+		{
+			$params['content_type'] = Post::type('micropost');
+			$params['orderby'] = 'pubdate DESC';
+		}
+		
+		return $params;
+	}
+	
 	/**
 	 * Add twitter block to the list of selectable blocks
 	 **/
@@ -321,7 +332,7 @@ class Microblog extends Plugin
 	public function action_block_content_microposts($block, $theme)
 	{
 		$block->posts = Posts::get( array( 'preset' => 'microposts', 'limit' => $block->limit ) );
-		Utils::debug( array( 'preset' => 'microposts', 'limit' => $block->limit ) );
+		$block->feed = URL::get( 'atom_feed', array( 'index' => 'microblog' ) );
 		// $this->tweets($block->username, $block->hide_replies, $block->limit, $block->cache, $block->linkify_urls, $block->hashtags_query);
 	}
 	
