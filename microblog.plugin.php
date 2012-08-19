@@ -59,7 +59,12 @@ class Microblog extends Plugin
 				self::$copy_services[ $service ] = false;
 			}
 		}
-				
+		
+		/**
+		 * On plugin init, add the template included with this plugin to the available templates in the theme
+		 */
+		$this->add_template('block.microposts', dirname(__FILE__) . '/block.microposts.php');
+		
 		$this->try_copy();
 		
 	}
@@ -271,6 +276,53 @@ class Microblog extends Plugin
 		
 		$ui->append( 'submit', 'save', 'Save' );
 		return $ui;
+	}
+	
+	/**
+	 * Provide some default presets
+	 * @static
+	 * @param array $presets List of presets that other classes might provide
+	 * @return array List of presets this class provides
+	 */
+	public static function filter_posts_get_all_presets($presets)
+	{
+		$presets['microposts'] = array( 'content_type' => Post::type( 'micropost' ), 'status' => Post::status( 'published' ) );
+		// we should provide a default limit: , 'limit' => Options::get('pagination', 5) but not until this is fixed: https://github.com/habari/habari/issues/355
+
+		return $presets;
+	}
+	
+	/**
+	 * Add twitter block to the list of selectable blocks
+	 **/
+	public function filter_block_list($block_list)
+	{
+		$block_list['microposts'] = _t('Microposts', 'microblog');
+		return $block_list;
+	}
+
+	/**
+	 * Configure the block
+	 **/
+	public function action_block_form_microposts($form, $block)
+	{
+
+		$limit = $form->append('select', 'limit', $block, _t('Number of updates to show', 'microblog'));
+		$limit->options = array_combine(range(1, 20), range(1, 20));
+
+		// $show_replies = $form->append('checkbox', 'hide_replies', $block, _t('Do not show @replies', 'microblog')); @TODO: implement this
+
+		$form->append('submit', 'save', _t('Save', 'microblog'));
+	}
+	
+	/**
+	 * Populate the block
+	 **/
+	public function action_block_content_microposts($block, $theme)
+	{
+		$block->posts = Posts::get( array( 'preset' => 'microposts', 'limit' => $block->limit ) );
+		Utils::debug( array( 'preset' => 'microposts', 'limit' => $block->limit ) );
+		// $this->tweets($block->username, $block->hide_replies, $block->limit, $block->cache, $block->linkify_urls, $block->hashtags_query);
 	}
 	
 	/**
