@@ -301,7 +301,7 @@ class Microblog extends Plugin
 	
 	public function filter_posts_get_paramarray( $params )
 	{
-		if( isset( $params['index'] ) && $params['index'] == 'microblog' )
+		if( isset( $params['index'] ) && $params['index'] == Options::get( 'microblog__base', self::$default_base) )
 		{
 			$params['content_type'] = Post::type('micropost');
 			$params['orderby'] = 'pubdate DESC';
@@ -339,7 +339,7 @@ class Microblog extends Plugin
 	public function action_block_content_microposts($block, $theme)
 	{
 		$block->posts = Posts::get( array( 'preset' => 'microposts', 'limit' => $block->limit ) );
-		$block->feed = URL::get( 'atom_feed', array( 'index' => 'microblog' ) );
+		$block->feed = URL::get( 'atom_feed', array( 'index' => Options::get( 'microblog__base', self::$default_base) ) );
 		// $this->tweets($block->username, $block->hide_replies, $block->limit, $block->cache, $block->linkify_urls, $block->hashtags_query);
 	}
 	
