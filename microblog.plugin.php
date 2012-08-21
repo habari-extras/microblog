@@ -440,13 +440,19 @@ class Microblog extends Plugin
 	 */
 	public function action_post_insert_after( $post )
 	{
+		$send_user = User::get_by_id( Options::get( 'microblog__senduser' ) );
+		$post_user = User::get_by_id( Options::get( 'microblog__copyuser' ) );
+		
 		if ($post->content_type == Post::type('micropost')) {
 			
-			foreach( self::$send_services as $service => $active )
+			if( !(($send_user == $post_user) && $post->info->source_id) ) // don't repost something we cloned from the same user
 			{
-				if( $active )
+				foreach( self::$send_services as $service => $active )
 				{
-					$this->service( $service, 'send', array( 'post' => $post, 'user' => User::get_by_id( Options::get( 'microblog__senduser' ) ) ) );
+					if( $active )
+					{
+						$this->service( $service, 'send', array( 'post' => $post, 'user' => $user ) );
+					}
 				}
 			}
 			
@@ -472,8 +478,8 @@ class Microblog extends Plugin
 		$posts = Plugins::filter( 'microblog__copyposts', $posts );
 		
 		foreach( $posts as $post )
-		{			
-			if( Posts::get( array( 'content' => $post->text, 'pubdate' => HabariDateTime::date_create( $post->time ) ) )->count() == 0 )
+		{
+			if( Posts::get( array( 'all:info' => array( 'source_id' => $post->id ) ) )->count() == 0 )
 			{
 				$micropost = new Post( array( 'content_type' => Post::type( 'micropost' ) ) );
 
